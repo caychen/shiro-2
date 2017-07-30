@@ -1,0 +1,73 @@
+需要在web.xml下配置shiro的shiroFilter
+	<filter>
+		<filter-name>shiroFilter</filter-name>
+		<filter-class>org.springframework.web.filter.DelegatingFilterProxy</filter-class>
+	</filter>
+	<filter-mapping>
+		<filter-name>shiroFilter</filter-name>
+		<url-pattern>/*</url-pattern>
+	</filter-mapping>
+	
+1、 获取当前的Subject，调用SecurityUtils.getSubject()方法
+
+2、 判断当前的用户是否已经被认证，即是否已经登录，调用Subject的isAuthenticated()方法
+
+3、 若没有被认证，则把用户名和密码封装为UsernamePasswordToken对象
+	1)、 创建一个表单页面
+	2)、 把请求提交到SpringMVC的handler
+	3)、 获取用户名和密码
+4、 执行登录，调用Subject的login(AuthenticationToken)方法
+
+5、 自定义Realm方法，从数据库中获取对应的记录，返回给Shiro
+	1)、 实际上需要继承org.apache.shiro.realm.AuthenticatingRealm类，
+		而事实上继承org.apache.shiro.realm.AuthorizingRealm抽象类，可以同时实现认证，也可以实现授权的功能
+	2)、 实现doGetAuthenticationInfo(AuthenticationToken)方法
+	
+6、 由Shiro完成对密码的比对
+	通过AuthenticatingRealm的CredentialsMatcher属性来进行密码的比对
+
+
+7、要把一个字符串加密为md5或者sha1，只要替换当前的CredentialsMatcher属性，直接使用HashedCredentialsMatcher对象，并设置加密算法即可。
+	方法：在实现Realm接口的bean的配置文件中添加密码匹配器属性credentialsMatcher：
+		<!-- 配置密码(凭证)匹配器 -->
+    	<property name="credentialsMatcher">
+    		<bean class="org.apache.shiro.authc.credential.HashedCredentialsMatcher">
+    			<!-- 加密算法 -->
+    			<property name="hashAlgorithmName" value="MD5"></property>
+    			<!-- 加密次数 -->
+    			<property name="hashIterations" value="1024"></property>
+    		</bean>
+    	</property>
+
+8、使用MD5或者SHA1盐值加密：
+	1、在实现Realm接口的类的doGetAuthenticationInfo方法返回值创建SimpleAuthenticationInfo对象的时候，
+		需要使用SimpleAuthenticationInfo(principal, credentials, credentialsSalt, realmName)构造器
+ 	2、使用ByteSource.Util.bytes()来计算盐值
+ 	3、盐值需要唯一：一般使用随机字符串或者userid
+ 	4、使用SimpleHash(hashAlgorithmName, credentials, salt, hashIterations)来计算盐值加密后的密码的值。
+ 	
+9、授权需要继承org.apache.shiro.realm.AuthorizingRealm抽象类，并实现其doGetAuthorizationInfo(PrincipalCollection)方法
+	org.apache.shiro.realm.AuthorizingRealm抽象类继承自org.apache.shiro.realm.AuthenticatingRealm接口，但是没有实现doGetAuthorizationInfo(PrincipalCollection)
+	所以认证和授权只需要继承org.apache.shiro.realm.AuthorizingRealm疾苦即可，同时实现它的两个抽象方法。
+	
+10、shiro标签
+	<shiro:authenticated /> 已经被认证的用户，即Subject.login登录成功者，才能显示内容
+	<shiro:guest />	表示身份为游客才能显示内容
+	<shiro:hasAnyRoles name=""/> 表示被认证的用户拥有name指定的角色中的一个，就能显示内容，其中name为一个以逗号分割的数组(或者列表)
+	<shiro:hasPermission name=""/> 表示被认证的用户拥有name指定的权限才能显示内容，其中name为单个权限的名称
+	<shiro:hasRole name=""/> 表示被认证的用户拥有name指定的角色才能显示内容，其中name为单个角色的名称
+	<shiro:lacksPermission name="" /> 表示缺少name指定权限才能显示内容，其中name为单个权限的名称
+	<shiro:lacksRole name=""/> 表示缺少name指定的角色才能显示内容，其中name为单个角色的名称
+	<shiro:notAuthenticated /> 表示没用被认证的用户，才能显示内容
+	<shiro:principal property="" /> 表示被认证的用户的属性，默认为被认证的用户的principal，其中property属性是可选的。
+	<shiro:user /> 表示被认证/记住我登陆后显示相应的信息
+	
+11、shiro注解
+	@RequiresRoles(value={},logical=Logical.AND|Logical.OR)
+	@RequiresAuthentication
+	@RequiresGuest
+	@RequiresPermissions(value={},logical=Logical.AND|Logical.OR)
+	@RequiresUser
+	
+	注意：如果需要在Service上添加事务注解的话，需要把shiro注解添加在Controller上
+		综上，把shiro注解加在Controller上。
